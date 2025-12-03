@@ -5348,6 +5348,23 @@ const generatePDFWithImages = async (
   const pageHeight = pdf.internal.pageSize.height;
   const pageWidth = pdf.internal.pageSize.width;
   const margin = 20;
+  const contentWidth = pageWidth - 2 * margin;
+
+  // Create a 5-column grid system for proper alignment
+  const createGridColumns = (numColumns: number) => {
+    const columnWidth = contentWidth / numColumns;
+    const columns = [];
+    for (let i = 0; i < numColumns; i++) {
+      columns.push(margin + (i * columnWidth));
+    }
+    return columns;
+  };
+
+  // Table grid: 5 columns [Sr.no., Description, Qty, Unit Price, Amount]
+  const tableColumns = createGridColumns(5);
+  
+  // Summary table grid: 2 columns [Label, Value]
+  const summaryColumns = createGridColumns(2);
   let yPosition = margin;
 
   const enabledSections = sections.filter(s => s.enabled);
@@ -5459,427 +5476,270 @@ const generatePDFWithImages = async (
   // Add border to first page
   addPageBorder();
 
-  // Cover Page
-  addSectionHeader('QUOTATION PROPOSAL');
-  yPosition += 10;
+  // Process only quotation items section
+  const quotationSection = enabledSections.find(s => s.type === 'quotation_items');
 
-  const coverSection = sections.find(s => s.type === 'cover_page');
-  if (coverSection) {
-    if (coverSection.data.companyLogo) {
-      try {
-        await addImageToPDF(coverSection.data.companyLogo, pageWidth - 70, yPosition, 50, 20);
-      } catch (error) {
-        console.error('Error adding company logo:', error);
-      }
-    }
-
-    addTextWithPageBreak(coverSection.data.companyName, 16, true);
-    addTextWithPageBreak(coverSection.data.companyAddress, 10);
-    addTextWithPageBreak(`Phone: ${coverSection.data.companyPhone}`, 10);
-    addTextWithPageBreak(`Email: ${coverSection.data.companyEmail}`, 10);
-    addTextWithPageBreak(`Website: ${coverSection.data.companyWebsite}`, 10);
-    yPosition += 20;
-
-    if (coverSection.data.coverImages && coverSection.data.coverImages.length > 0) {
-      await addImageGrid(coverSection.data.coverImages, 2, 80, 60);
-      yPosition += 10;
-    }
-  }
-
-  if (customer) {
-    addTextWithPageBreak('To:', 12, true);
-    addTextWithPageBreak(customer.primaryContact.name, 12);
-    addTextWithPageBreak(customer.companyName, 12);
-    addTextWithPageBreak(`Email: ${customer.primaryContact.email}`, 10);
-    addTextWithPageBreak(`Phone: ${customer.primaryContact.phone}`, 10);
+  if (quotationSection) {
+    // Professional quotation header
+    pdf.setFontSize(16);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('QUOTATION DETAILS', margin, yPosition);
     yPosition += 15;
-  }
 
-  addTextWithPageBreak(`Quotation Number: ${quotationData.quotationNumber}`, 12);
-  addTextWithPageBreak(`Issue Date: ${new Date(quotationData.issueDate).toLocaleDateString()}`, 12);
-  addTextWithPageBreak(`Valid Until: ${new Date(quotationData.validUntil).toLocaleDateString()}`, 12);
-  yPosition += 20;
+    if (quotationSection.data.items && quotationSection.data.items.length > 0) {
+      // Filter out deleted items for PDF
+      const visibleItems = quotationSection.data.items.filter((item: QuotationItem) => {
+        return !quotationData.deletedFields?.[item.id];
+      });
 
-  if (coverSection?.data.letterContent) {
-    addTextWithPageBreak('Dear Valued Client,', 12);
-    addTextWithPageBreak(coverSection.data.letterContent, 11);
-    yPosition += 15;
-  }
+      if (quotationSection.data.titles && quotationSection.data.titles.length > 0) {
+        const visibleTitles = quotationSection.data.titles.filter((title: QuotationTitle) => {
+          return !quotationData.deletedFields?.[title.id];
+        });
 
-  // Process all enabled sections
-  for (const section of enabledSections) {
-    if (section.type === 'cover_page') continue;
-    
-    if (yPosition + 30 > pageHeight - margin) {
-      pdf.addPage();
-      currentPage++;
-      yPosition = margin;
-      addPageBorder();
-    }
+        for (const title of visibleTitles) {
+          const titleItems = visibleItems.filter((item: QuotationItem) => item.titleId === title.id);
 
-    addSectionHeader(section.title.toUpperCase());
-
-    switch (section.type) {
-      case 'executive_summary':
-        if (section.data.summary) {
-          addTextWithPageBreak(section.data.summary, 11);
-        }
-        if (section.data.keyBenefits && section.data.keyBenefits.length > 0) {
-          yPosition += 8;
-          addTextWithPageBreak('Key Benefits:', 12, true);
-          section.data.keyBenefits.forEach((benefit: string) => {
-            addTextWithPageBreak(`• ${benefit}`, 11);
-          });
-        }
-        break;
-
-      case 'company_introduction':
-        if (section.data.companyImages && section.data.companyImages.length > 0) {
-          await addImageGrid(section.data.companyImages, 2, 60, 45);
-          yPosition += 5;
-        }
-
-        if (section.data.description) {
-          addTextWithPageBreak(section.data.description, 11);
-        }
-        if (section.data.achievements && section.data.achievements.length > 0) {
-          yPosition += 8;
-          addTextWithPageBreak('Achievements:', 12, true);
-          section.data.achievements.forEach((achievement: string) => {
-            addTextWithPageBreak(`• ${achievement}`, 11);
-          });
-        }
-        break;
-
-      case 'problem_statement':
-        if (section.data.currentSituation) {
-          addTextWithPageBreak(section.data.currentSituation, 11);
-        }
-        if (section.data.objectives && section.data.objectives.length > 0) {
-          yPosition += 8;
-          addTextWithPageBreak('Objectives:', 12, true);
-          section.data.objectives.forEach((objective: string) => {
-            addTextWithPageBreak(`• ${objective}`, 11);
-          });
-        }
-        break;
-
-      case 'solution_details':
-        if (section.data.solutionImages && section.data.solutionImages.length > 0) {
-          await addImageGrid(section.data.solutionImages, 2, 70, 50);
-          yPosition += 5;
-        }
-
-        if (section.data.solutionOverview) {
-          addTextWithPageBreak(section.data.solutionOverview, 11);
-        }
-        if (section.data.keyFeatures && section.data.keyFeatures.length > 0) {
-          yPosition += 8;
-          addTextWithPageBreak('Key Features:', 12, true);
-          section.data.keyFeatures.forEach((feature: string) => {
-            addTextWithPageBreak(`• ${feature}`, 11);
-          });
-        }
-        break;
-
-      case 'product_specifications':
-        if (section.data.products && section.data.products.length > 0) {
-          addTextWithPageBreak('Products & Services:', 14, true);
-          
-          for (const product of section.data.products) {
-            const selectedProduct = products.find(p => p.id === product.productId);
-            if (selectedProduct) {
-              if (product.images && product.images.length > 0) {
-                await addImageGrid(product.images, 3, 50, 40);
-                yPosition += 5;
-              }
-
-              addTextWithPageBreak(`${selectedProduct.name}`, 12, true);
-              addTextWithPageBreak(`Description: ${product.description || selectedProduct.description}`, 10);
-              addTextWithPageBreak(`Quantity: ${product.quantity}`, 10);
-              addTextWithPageBreak(`Unit Price: ${formatAmount(product.unitPrice)}`, 10);
-              addTextWithPageBreak(`Discount: ${product.discount}%`, 10);
-              const lineTotal = (product.quantity * product.unitPrice) * (1 - product.discount / 100);
-              addTextWithPageBreak(`Line Total: ${formatAmount(lineTotal)}`, 10, true);
-              yPosition += 8;
-            }
-          }
-        }
-        break;
-
-
-
-
-case 'quotation_items':
-        if (section.data.items && section.data.items.length > 0) {
-          // Filter out deleted items for PDF
-          const visibleItems = section.data.items.filter((item: QuotationItem) => {
-            return !quotationData.deletedFields?.[item.id];
-          });
-
-          addTextWithPageBreak('Quotation Items:', 14, true);
-          
-          if (section.data.titles && section.data.titles.length > 0) {
-            const visibleTitles = section.data.titles.filter((title: QuotationTitle) => {
-              return !quotationData.deletedFields?.[title.id];
-            });
-
-            for (const title of visibleTitles) {
-              if (yPosition + 10 > pageHeight - margin) {
-                pdf.addPage();
-                currentPage++;
-                yPosition = margin;
-                addPageBorder();
-              }
-              
-              addSectionHeader(title.title.toUpperCase());
-              yPosition += 8;
-              
-              const titleItems = visibleItems.filter((item: QuotationItem) => item.titleId === title.id);
-              
-              if (titleItems.length > 0) {
-                // Table header
-                pdf.setFontSize(10);
-                pdf.setFont('helvetica', 'bold');
-                pdf.text('Item', margin, yPosition);
-                pdf.text('Description', margin + 25, yPosition);
-                pdf.text('Qty', margin + 90, yPosition);
-                pdf.text('Rate', margin + 110, yPosition);
-                pdf.text('Discount', margin + 130, yPosition);
-                pdf.text('Tax', margin + 150, yPosition);
-                pdf.text('Services', margin + 170, yPosition);
-                pdf.text('Amount', margin + 190, yPosition);
-                yPosition += 5;
-                pdf.line(margin, yPosition, pageWidth - margin, yPosition);
-                yPosition += 3;
-
-                // Table rows
-                pdf.setFont('helvetica', 'normal');
-                for (const [index, item] of titleItems.entries()) {
-                  if (yPosition + 30 > pageHeight - margin) {
-                    pdf.addPage();
-                    currentPage++;
-                    yPosition = margin + 20;
-                    addPageBorder();
-                  }
-                  
-                  // Main item details
-                  pdf.text((index + 1).toString(), margin, yPosition);
-                  pdf.text(item.productName?.substring(0, 15) || '', margin + 10, yPosition);
-                  pdf.text(item.description?.substring(0, 20) || '', margin + 25, yPosition);
-                  pdf.text(item.quantity.toString(), margin + 90, yPosition);
-                  pdf.text(formatAmount(item.rate), margin + 110, yPosition);
-                  pdf.text(`${item.discount}%`, margin + 130, yPosition);
-                  pdf.text(`${item.tax}%`, margin + 150, yPosition);
-                  
-                  // Services information - Only if selected
-                  const serviceCharges = item.serviceCharges || 0;
-                  if (serviceCharges > 0) {
-                    pdf.text(`+${formatAmount(serviceCharges)}`, margin + 170, yPosition);
-                  } else {
-                    pdf.text('-', margin + 170, yPosition);
-                  }
-                  
-                  pdf.text(formatAmount(item.amount), margin + 190, yPosition);
-                  yPosition += 6;
-
-                  // Show ONLY SELECTED services details
-                  if (serviceCharges > 0 && serviceDetails[item.id]) {
-                    const selectedServicesForItem = serviceDetails[item.id] || [];
-                    
-                    if (selectedServicesForItem.length > 0) {
-                      pdf.setFontSize(8);
-                      pdf.setTextColor(59, 130, 246);
-                      
-                      // Services heading
-                      pdf.text('Selected Services:', margin + 15, yPosition);
-                      yPosition += 4;
-                      
-                      // List only selected services
-                      for (const service of selectedServicesForItem) {
-                        if (yPosition + 4 > pageHeight - margin) {
-                          pdf.addPage();
-                          currentPage++;
-                          yPosition = margin + 10;
-                          addPageBorder();
-                          pdf.setFontSize(8);
-                          pdf.setTextColor(59, 130, 246);
-                        }
-                        
-                        const serviceName = service.serviceName?.substring(0, 25) || 'Service';
-                        const servicePrice = service.total || service.price || 0;
-                        pdf.text(`  ✓ ${serviceName}`, margin + 15, yPosition);
-                        pdf.text(formatAmount(servicePrice), margin + 170, yPosition);
-                        yPosition += 4;
-                      }
-                      
-                      pdf.setTextColor(0, 0, 0);
-                      pdf.setFontSize(10);
-                    }
-                  }
-                  
-                  yPosition += 8;
-                }
-                yPosition += 10;
-              }
-            }
-          }
-          
-          // Summary calculations
-          const subtotal = visibleItems.reduce((sum: number, item: QuotationItem) => sum + (item.quantity * item.rate), 0);
-          const totalDiscount = visibleItems.reduce((sum: number, item: QuotationItem) => {
-            const itemSubtotal = item.quantity * item.rate;
-            return sum + (itemSubtotal * (item.discount / 100));
-          }, 0);
-          const totalTax = visibleItems.reduce((sum: number, item: QuotationItem) => {
-            const itemSubtotal = item.quantity * item.rate;
-            const itemDiscount = itemSubtotal * (item.discount / 100);
-            return sum + ((itemSubtotal - itemDiscount) * (item.tax / 100));
-          }, 0);
-          const totalServiceCharges = visibleItems.reduce((sum: number, item: QuotationItem) => {
-            return sum + (item.serviceCharges || 0);
-          }, 0);
-          const grandTotal = subtotal - totalDiscount + totalTax + totalServiceCharges;
-
-          addTextWithPageBreak('Summary:', 12, true);
-          addTextWithPageBreak(`Subtotal: ${formatAmount(subtotal)}`, 11);
-          addTextWithPageBreak(`Discount: -${formatAmount(totalDiscount)}`, 11);
-          addTextWithPageBreak(`Tax: ${formatAmount(totalTax)}`, 11);
-          addTextWithPageBreak(`Service Charges: ${formatAmount(totalServiceCharges)}`, 11);
-          addTextWithPageBreak(`Grand Total: ${formatAmount(grandTotal)}`, 14, true);
-          
-          // NEW: Selected Services Detailed Page
-          if (totalServiceCharges > 0) {
-            // Check if we need new page
-            if (yPosition + 100 > pageHeight - margin) {
+          if (titleItems.length > 0) {
+            // Check if we need new page for section
+            if (yPosition + 60 > pageHeight - margin) {
               pdf.addPage();
               currentPage++;
               yPosition = margin;
               addPageBorder();
             }
-            
-            yPosition += 15;
-            addSectionHeader('SELECTED SERVICES DETAILS');
-            yPosition += 10;
-            
-            let hasSelectedServices = false;
-            
-            for (const item of visibleItems) {
-              const itemSelectedServices = serviceDetails[item.id] || [];
-              
-              if (itemSelectedServices.length > 0) {
-                hasSelectedServices = true;
-                
-                // Product header
-                pdf.setFontSize(11);
-                pdf.setFont('helvetica', 'bold');
-                pdf.text(`Product: ${item.productName}`, margin, yPosition);
-                yPosition += 7;
-                
-                // Services table header
-                pdf.setFontSize(9);
-                pdf.setFont('helvetica', 'bold');
-                pdf.text('Service Name', margin, yPosition);
-                pdf.text('Unit Price', margin + 100, yPosition);
-                pdf.text('Total', margin + 140, yPosition);
-                yPosition += 4;
-                pdf.line(margin, yPosition, pageWidth - margin, yPosition);
-                yPosition += 3;
-                
-                // Services list
-                pdf.setFont('helvetica', 'normal');
-                pdf.setFontSize(9);
-                
-                for (const service of itemSelectedServices) {
-                  if (yPosition + 6 > pageHeight - margin) {
-                    pdf.addPage();
-                    currentPage++;
-                    yPosition = margin + 20;
-                    addPageBorder();
-                    pdf.setFontSize(9);
-                  }
-                  
-                  const serviceName = service.serviceName || 'Service';
-                  const unitPrice = service.price || 0;
-                  const total = service.total || unitPrice;
-                  
-                  pdf.text(serviceName.substring(0, 40), margin, yPosition);
-                  pdf.text(formatAmount(unitPrice), margin + 100, yPosition);
-                  pdf.text(formatAmount(total), margin + 140, yPosition);
-                  yPosition += 6;
-                }
-                
-                // Item service total
-                yPosition += 3;
-                pdf.setFont('helvetica', 'bold');
-                pdf.text(`Total Services for ${item.productName}:`, margin + 90, yPosition);
-                pdf.text(formatAmount(item.serviceCharges || 0), margin + 140, yPosition);
-                yPosition += 10;
-                
-                // Separator line
-                pdf.line(margin, yPosition, pageWidth - margin, yPosition);
-                yPosition += 10;
-              }
-            }
-            
-            // If no selected services (shouldn't happen if totalServiceCharges > 0)
-            if (!hasSelectedServices) {
-              pdf.setFontSize(10);
-              pdf.text('No services selected', margin, yPosition);
-              yPosition += 10;
-            }
-            
-            // Grand total of all selected services
-            yPosition += 5;
+
+            // Section header in ALL CAPS with professional styling
+            pdf.setFillColor(59, 130, 246);
+            pdf.setTextColor(255, 255, 255);
             pdf.setFontSize(12);
             pdf.setFont('helvetica', 'bold');
-            pdf.text('TOTAL SELECTED SERVICES CHARGES:', margin + 70, yPosition);
-            pdf.text(formatAmount(totalServiceCharges), margin + 140, yPosition);
+            pdf.rect(margin, yPosition, pageWidth - 2 * margin, 10, 'F');
+            pdf.text(title.title.toUpperCase(), margin + 5, yPosition + 7);
+            yPosition += 15;
+            pdf.setTextColor(0, 0, 0);
+
+            // Table headers - Professional layout using grid
+            pdf.setFontSize(10);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFillColor(240, 240, 240);
+            pdf.rect(margin, yPosition, contentWidth, 12, 'F');
+
+            // Column headers with grid alignment
+            pdf.text('Sr.no.', tableColumns[0] + 2, yPosition + 8);
+            pdf.text('Description of Goods', tableColumns[1] + 2, yPosition + 8);
+            pdf.text('Qty', tableColumns[2] + 10, yPosition + 8);
+            pdf.text('Unit Price', tableColumns[3] + 2, yPosition + 8);
+            pdf.text('Amount(AED)', tableColumns[4] + 2, yPosition + 8);
+            yPosition += 15;
+
+            // Draw table border
+            pdf.setDrawColor(200, 200, 200);
+            pdf.rect(margin, yPosition - 15, contentWidth, 12);
+
+            // Table rows
+            pdf.setFont('helvetica', 'normal');
+            pdf.setFontSize(9);
+
+            let sectionTotal = 0;
+
+            for (const [index, item] of titleItems.entries()) {
+              if (yPosition + 60 > pageHeight - margin) {
+                pdf.addPage();
+                currentPage++;
+                yPosition = margin;
+                addPageBorder();
+
+                // Repeat section header on new page
+                pdf.setFillColor(59, 130, 246);
+                pdf.setTextColor(255, 255, 255);
+                pdf.setFontSize(12);
+                pdf.setFont('helvetica', 'bold');
+                pdf.rect(margin, yPosition, pageWidth - 2 * margin, 10, 'F');
+                pdf.text(title.title.toUpperCase(), margin + 5, yPosition + 7);
+                yPosition += 15;
+                pdf.setTextColor(0, 0, 0);
+
+                // Repeat table headers using grid
+                pdf.setFontSize(10);
+                pdf.setFont('helvetica', 'bold');
+                pdf.setFillColor(240, 240, 240);
+                pdf.rect(margin, yPosition, contentWidth, 12, 'F');
+                pdf.text('Sr.no.', tableColumns[0] + 2, yPosition + 8);
+                pdf.text('Description of Goods', tableColumns[1] + 2, yPosition + 8);
+                pdf.text('Qty', tableColumns[2] + 10, yPosition + 8);
+                pdf.text('Unit Price', tableColumns[3] + 2, yPosition + 8);
+                pdf.text('Amount(AED)', tableColumns[4] + 2, yPosition + 8);
+                yPosition += 15;
+              }
+
+              // Alternating row background
+              if (index % 2 === 0) {
+                pdf.setFillColor(250, 250, 250);
+                pdf.rect(margin, yPosition - 2, pageWidth - 2 * margin, 10, 'F');
+              }
+
+              // Row data with proper alignment using grid columns
+              const itemNumber = (index + 1).toString();
+              const description = item.productName || item.description || '';
+              const quantity = item.quantity.toString();
+              const unitPrice = formatAmount(item.rate);
+              const lineTotal = item.quantity * item.rate * (1 - item.discount / 100);
+
+              pdf.text(itemNumber, tableColumns[0] + 2, yPosition + 5);
+              pdf.text(description.substring(0, 35), tableColumns[1] + 2, yPosition + 5);
+              pdf.text(quantity, tableColumns[2] + 10, yPosition + 5);
+              pdf.text(unitPrice, tableColumns[3] + 2, yPosition + 5);
+              pdf.text(formatAmount(lineTotal), tableColumns[4] + 2, yPosition + 5);
+
+              sectionTotal += lineTotal;
+              yPosition += 10;
+
+              // Add detailed item information on next line
+              if (yPosition + 35 > pageHeight - margin) {
+                pdf.addPage();
+                currentPage++;
+                yPosition = margin;
+                addPageBorder();
+              }
+
+              pdf.setFontSize(8);
+              pdf.setFont('helvetica', 'normal');
+              pdf.text(`Rate: ${formatAmount(item.rate)} | Discount: ${item.discount}% | Tax: ${item.tax}%`, margin + 5, yPosition + 2);
+              yPosition += 4;
+
+              if (item.serviceCharges && item.serviceCharges > 0) {
+                pdf.text(`Service Charges: ${formatAmount(item.serviceCharges)}`, margin + 5, yPosition + 2);
+                yPosition += 4;
+              }
+
+              // Add product image if available
+              if (item.productImage) {
+                try {
+                  await addImageToPDF(item.productImage, margin + 5, yPosition, 30, 20);
+                  yPosition += 25;
+                } catch (error) {
+                  console.error('Error adding product image:', error);
+                  yPosition += 5;
+                }
+              } else {
+                yPosition += 5;
+              }
+
+              pdf.setFont('helvetica', 'normal');
+              pdf.setFontSize(9);
+            }
+
+            // Section total - Fixed positioning to stay within borders
+            yPosition += 5;
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(10);
+            pdf.setFillColor(59, 130, 246);
+            pdf.setTextColor(255, 255, 255);
+            
+            // Use full width for total row, keep it within borders
+            pdf.rect(margin, yPosition - 2, contentWidth, 10, 'F');
+            pdf.text(`TOTAL(${title.title.toUpperCase()})`, margin + 5, yPosition + 5);
+            pdf.text(formatAmount(sectionTotal), summaryColumns[1] - 20, yPosition + 5, { align: 'right' });
+            yPosition += 15;
+            pdf.setTextColor(0, 0, 0);
           }
         }
-        break;
+      }
 
+      // Overall summary on new page
+      pdf.addPage();
+      currentPage++;
+      yPosition = margin;
+      addPageBorder();
 
-      
-      case 'timeline_schedule':
-        if (section.data.phases && section.data.phases.length > 0) {
-          addTextWithPageBreak('Project Timeline:', 12, true);
-          section.data.phases.forEach((phase: any, index: number) => {
-            addTextWithPageBreak(`${index + 1}. ${phase.name} (${phase.duration})`, 11, true);
-            if (phase.deliverables && phase.deliverables.length > 0) {
-              phase.deliverables.forEach((deliverable: string) => {
-                addTextWithPageBreak(`   • ${deliverable}`, 10);
-              });
-            }
-            yPosition += 5;
-          });
+      // Summary header
+      pdf.setFillColor(59, 130, 246);
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.rect(margin, yPosition, pageWidth - 2 * margin, 12, 'F');
+      pdf.text('QUOTATION SUMMARY', margin + 5, yPosition + 8);
+      yPosition += 20;
+      pdf.setTextColor(0, 0, 0);
+
+      // Calculate totals
+      const subtotal = visibleItems.reduce((sum: number, item: QuotationItem) => {
+        return sum + (item.quantity * item.rate * (1 - item.discount / 100));
+      }, 0);
+
+      const totalTax = visibleItems.reduce((sum: number, item: QuotationItem) => {
+        const itemSubtotal = item.quantity * item.rate * (1 - item.discount / 100);
+        return sum + (itemSubtotal * (item.tax / 100));
+      }, 0);
+
+      const totalServiceCharges = visibleItems.reduce((sum: number, item: QuotationItem) => {
+        return sum + (item.serviceCharges || 0);
+      }, 0);
+
+      const grandTotal = subtotal + totalTax + totalServiceCharges;
+
+      // Summary table
+      pdf.setFontSize(11);
+      pdf.setFont('helvetica', 'normal');
+
+      const summaryItems = [
+        { label: 'SUB-TOTAL', value: formatAmount(subtotal) },
+        { label: 'VAT(5%)', value: formatAmount(totalTax) },
+        { label: 'Service Charges', value: formatAmount(totalServiceCharges) }
+      ];
+
+      summaryItems.forEach((item, index) => {
+        if (index % 2 === 0) {
+          pdf.setFillColor(250, 250, 250);
+          pdf.rect(margin, yPosition - 2, pageWidth - 2 * margin, 10, 'F');
         }
-        break;
 
-      case 'terms_warranties':
-        if (section.data.generalTerms) {
-          addTextWithPageBreak('Terms & Conditions:', 12, true);
-          addTextWithPageBreak(section.data.generalTerms, 10);
-        }
-        break;
+        pdf.text(item.label, summaryColumns[0] + 5, yPosition + 5);
+        pdf.text(item.value, summaryColumns[1] + 5, yPosition + 5);
+        yPosition += 10;
+      });
 
-      case 'contact_information':
-        if (section.data.companyContacts && section.data.companyContacts.length > 0) {
-          addTextWithPageBreak('Contact Information:', 12, true);
-          section.data.companyContacts.forEach((contact: any) => {
-            addTextWithPageBreak(`${contact.name} - ${contact.title}`, 11);
-            addTextWithPageBreak(`Phone: ${contact.phone} | Email: ${contact.email}`, 10);
-            yPosition += 5;
-          });
-        }
-        break;
+      // Grand total - Properly positioned within borders
+      yPosition += 5;
+      pdf.setFillColor(59, 130, 246);
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(13);
+      pdf.rect(margin, yPosition - 2, pageWidth - 2 * margin, 12, 'F');
+      pdf.text('TOTAL (AED)', margin + 5, yPosition + 7);
+      pdf.text(formatAmount(grandTotal), summaryColumns[1] + 5, yPosition + 7);
+      yPosition += 20;
+      pdf.setTextColor(0, 0, 0);
     }
-
-    yPosition += 15;
   }
 
-  // Add page numbers
+  // Add bank details footer on last page
   const totalPages = pdf.getNumberOfPages();
+  pdf.setPage(totalPages);
+
+  // Bank details section
+  const bankDetailsY = pageHeight - 80;
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(11);
+  pdf.setTextColor(0, 0, 0);
+  pdf.text('BANK DETAILS:', margin, bankDetailsY);
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(10);
+  pdf.text('BANK NAME: ADCB', margin, bankDetailsY + 8);
+  pdf.text('ACCOUNT TITLE: SBR SYSTEM TECHNICAL SERVICES CO', margin, bankDetailsY + 14);
+  pdf.text('ACCOUNT NO: 13047666920001', margin, bankDetailsY + 20);
+  pdf.text('IBAN (AED): AE090030013047666920001', margin, bankDetailsY + 26);
+
+  // Signature on right
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(10);
+  pdf.text('Bilal', pageWidth - margin - 30, bankDetailsY + 20);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Technical Manager', pageWidth - margin - 50, bankDetailsY + 26);
+
+  // Add page numbers to all pages
   for (let i = 1; i <= totalPages; i++) {
     pdf.setPage(i);
     pdf.setFontSize(8);
@@ -8144,7 +8004,7 @@ const addQuotationItem = (titleId: string) => {
     // Calculate new service charges
     let newServiceCharges = currentItem.serviceCharges || 0;
     const servicePrice = service.total || service.price || 0;
-    
+
     if (isSelected) {
       newServiceCharges += servicePrice;
     } else {
@@ -8152,9 +8012,36 @@ const addQuotationItem = (titleId: string) => {
     }
 
     // Update the item with new service charges
-    updateQuotationItem(itemId, { 
-      serviceCharges: Math.max(0, newServiceCharges) 
+    updateQuotationItem(itemId, {
+      serviceCharges: Math.max(0, newServiceCharges)
     });
+
+    // Auto-update description with service information
+    const updatedServiceDetails = isSelected
+      ? [...(serviceDetails[itemId] || []), service]
+      : (serviceDetails[itemId] || []).filter((s: any) => s.serviceId !== serviceId);
+
+    if (updatedServiceDetails.length > 0) {
+      const serviceText = updatedServiceDetails
+        .map(s => `${s.serviceName} (${formatAmount(s.total || s.price || 0)})`)
+        .join(', ');
+
+      const autoDescription = `We implement these services with these charges: ${serviceText}`;
+
+      // Only update if description is empty or contains the auto-generated text
+      if (!currentItem.description || currentItem.description.includes('We implement these services')) {
+        updateQuotationItem(itemId, {
+          description: autoDescription
+        });
+      }
+    } else {
+      // Clear auto-generated description if no services selected
+      if (currentItem.description && currentItem.description.includes('We implement these services')) {
+        updateQuotationItem(itemId, {
+          description: ''
+        });
+      }
+    }
   };
 
   // Update quotation item directly
@@ -8459,30 +8346,20 @@ const addQuotationItem = (titleId: string) => {
                         </Button>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div className="space-y-2">
+                      {/* Item ID and Product in one row */}
+                      <div className="flex gap-4 items-end mb-4">
+                        <div className="flex-1 space-y-2">
                           <Label>Item ID</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              value={generateItemId(titleIndex, index)}
-                              readOnly
-                              className="bg-gray-100 font-semibold"
-                            />
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-10 px-3 text-red-600 hover:text-red-700 hover:bg-red-50"
-                              disabled
-                              title="Item ID is auto-generated"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+                          <Input
+                            value={generateItemId(titleIndex, index)}
+                            readOnly
+                            className="bg-gray-100 font-semibold"
+                          />
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="flex-[3] space-y-2">
                           <Label>Product</Label>
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 items-center">
                             <Select
                               value={item.productId}
                               onValueChange={async (value) => {
@@ -8504,7 +8381,21 @@ const addQuotationItem = (titleId: string) => {
                               <SelectContent>
                                 {products.map((p) => (
                                   <SelectItem key={p.id} value={p.id}>
-                                    {p.name} - {formatAmount(p.sellingPrice)}
+                                    <div className="flex flex-col">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium">{p.name}</span>
+                                        <span className="text-green-600 font-semibold">
+                                          {formatAmount(p.sellingPrice)}
+                                        </span>
+                                      </div>
+                                      {(p.sku || p.modelNumber) && (
+                                        <div className="text-xs text-gray-500 mt-1">
+                                          {p.sku && <span>SKU: {p.sku}</span>}
+                                          {p.sku && p.modelNumber && <span> | </span>}
+                                          {p.modelNumber && <span>Model: {p.modelNumber}</span>}
+                                        </div>
+                                      )}
+                                    </div>
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -8520,116 +8411,48 @@ const addQuotationItem = (titleId: string) => {
                           </div>
                         </div>
                       </div>
-
-                      <div className="space-y-2 mb-4">
-                        <Label>Product Images</Label>
-                        <div className="flex gap-2 items-start">
-                          <ImageUploader
-                            images={item.images || []}
-                            onImagesChange={(images) =>
-                              updateQuotationItemWithMerge(item.id, { images })
-                            }
-                            multiple
-                            maxImages={5}
-                          />
-                          <Button
-                            onClick={() => deleteImagesFromItem(item.id)}
-                            variant="outline"
-                            size="sm"
-                            className="h-10 px-3 text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
                       
 
-                      {/* SERVICES SECTION */}
+                      {/* SERVICES SECTION - MINIMAL */}
                       {item.productId && productServices.length > 0 && (
-                        <div className="mt-6 mb-6 p-4 border rounded-lg bg-blue-50">
-                          <div className="flex items-center justify-between mb-3">
-                            <Label className="text-lg font-medium">Available Services</Label>
-                            <div className="flex gap-2">
-                              <Badge variant="outline" className="bg-white">
-                                {productServices.length} services available
-                              </Badge>
-                              <Button
-                                onClick={() => deleteServicesFromItem(item.id)}
-                                variant="outline"
-                                size="sm"
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                              >
-                                <Trash2 className="h-4 w-4 mr-1" />
-                                Clear All
-                              </Button>
-                            </div>
+                        <div className="mt-2 mb-2 p-2 border rounded bg-blue-50">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-sm font-medium">Services ({itemServiceDetails.length})</Label>
+                            <Button
+                              onClick={() => deleteServicesFromItem(item.id)}
+                              variant="outline"
+                              size="sm"
+                              className="h-6 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
                           </div>
-                          
-                          <div className="space-y-3">
+
+                          <div className="flex flex-wrap gap-1 mt-1">
                             {productServices.map((service: any, serviceIndex: number) => (
-                              <div 
-                                key={serviceIndex} 
-                                className="flex items-center justify-between p-3 bg-white rounded border"
-                              >
-                                <div className="flex items-center gap-3">
-                                  <Checkbox
-                                    id={`service-${item.id}-${serviceIndex}`}
-                                    checked={itemSelectedServices[service.serviceId] || false}
-                                    onCheckedChange={(checked) => {
-                                      handleServiceSelection(
-                                        item.id, 
-                                        service.serviceId, 
-                                        service, 
-                                        checked as boolean
-                                      );
-                                    }}
-                                  />
-                                  <div>
-                                    <Label 
-                                      htmlFor={`service-${item.id}-${serviceIndex}`}
-                                      className="font-medium cursor-pointer"
-                                    >
-                                      {service.serviceName}
-                                    </Label>
-                                    {service.serviceId && (
-                                      <p className="text-xs text-gray-500">ID: {service.serviceId}</p>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <p className="font-semibold text-green-600">
-                                    {formatAmount(service.total || service.price || 0)}
-                                  </p>
-                                  {service.quantity && (
-                                    <p className="text-sm text-gray-500">Qty: {service.quantity}</p>
-                                  )}
-                                </div>
+                              <div key={serviceIndex} className="flex items-center gap-1">
+                                <Checkbox
+                                  id={`service-${item.id}-${serviceIndex}`}
+                                  checked={itemSelectedServices[service.serviceId] || false}
+                                  onCheckedChange={(checked) => {
+                                    handleServiceSelection(
+                                      item.id,
+                                      service.serviceId,
+                                      service,
+                                      checked as boolean
+                                    );
+                                  }}
+                                  className="w-3 h-3"
+                                />
+                                <Label
+                                  htmlFor={`service-${item.id}-${serviceIndex}`}
+                                  className="text-xs cursor-pointer"
+                                >
+                                  {service.serviceName}
+                                </Label>
                               </div>
                             ))}
                           </div>
-                          
-                          {/* Selected Services Summary */}
-                          {itemServiceDetails.length > 0 && (
-                            <div className="mt-4 pt-4 border-t">
-                              <h6 className="font-medium mb-2">Selected Services for this Item:</h6>
-                              <div className="space-y-2">
-                                {itemServiceDetails.map((service, index) => (
-                                  <div key={index} className="flex justify-between text-sm bg-green-50 p-2 rounded">
-                                    <span className="text-green-800">{service.serviceName}</span>
-                                    <span className="font-semibold text-green-700">
-                                      {formatAmount(service.total || service.price || 0)}
-                                    </span>
-                                  </div>
-                                ))}
-                                <div className="flex justify-between font-medium pt-2 border-t">
-                                  <span>Total Service Charges:</span>
-                                  <span className="text-blue-700">
-                                    {formatAmount(item.serviceCharges || 0)}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
                         </div>
                       )}
 
@@ -8642,125 +8465,97 @@ const addQuotationItem = (titleId: string) => {
                         </div>
                       )}
 
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
+                      <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-4">
                         {/* Quantity Field */}
-                        <div className="space-y-2">
-                          <Label>Quantity</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              type="number"
-                              value={item.quantity}
-                              onChange={(e) =>
-                                updateQuotationItemWithMerge(item.id, { quantity: +e.target.value })
-                              }
-                            />
-                            <Button
-                              onClick={() => deleteFieldValue(item.id, 'quantity', 1)}
-                              variant="outline"
-                              size="sm"
-                              className="h-10 px-3 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+                        <div className="space-y-1">
+                          <Label className="text-sm">Qty</Label>
+                          <Input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) =>
+                              updateQuotationItemWithMerge(item.id, { quantity: +e.target.value })
+                            }
+                            className="h-8 text-sm"
+                          />
                         </div>
 
                         {/* Rate Field */}
-                        <div className="space-y-2">
-                          <Label>Rate</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              type="number"
-                              value={item.rate}
-                              onChange={(e) =>
-                                updateQuotationItemWithMerge(item.id, { rate: +e.target.value })
-                              }
-                            />
-                            <Button
-                              onClick={() => deleteFieldValue(item.id, 'rate', 0)}
-                              variant="outline"
-                              size="sm"
-                              className="h-10 px-3 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+                        <div className="space-y-1">
+                          <Label className="text-sm">Rate</Label>
+                          <Input
+                            type="number"
+                            value={item.rate}
+                            onChange={(e) =>
+                              updateQuotationItemWithMerge(item.id, { rate: +e.target.value })
+                            }
+                            className="h-8 text-sm"
+                          />
                         </div>
 
                         {/* Tax Field */}
-                        <div className="space-y-2">
-                          <Label>Tax (%)</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              type="number"
-                              value={item.tax}
-                              onChange={(e) =>
-                                updateQuotationItemWithMerge(item.id, { tax: +e.target.value })
-                              }
-                            />
-                            <Button
-                              onClick={() => deleteFieldValue(item.id, 'tax', 0)}
-                              variant="outline"
-                              size="sm"
-                              className="h-10 px-3 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+                        <div className="space-y-1">
+                          <Label className="text-sm">Tax (%)</Label>
+                          <Input
+                            type="number"
+                            value={item.tax}
+                            onChange={(e) =>
+                              updateQuotationItemWithMerge(item.id, { tax: +e.target.value })
+                            }
+                            className="h-8 text-sm"
+                          />
                         </div>
 
                         {/* Discount Field */}
-                        <div className="space-y-2">
-                          <Label>Discount (%)</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              type="number"
-                              value={item.discount}
-                              onChange={(e) =>
-                                updateQuotationItemWithMerge(item.id, { 
-                                  discount: +e.target.value,
-                                  discountType: 'percentage'
-                                })
-                              }
-                            />
-                            <Button
-                              onClick={() => deleteFieldValue(item.id, 'discount', 0)}
-                              variant="outline"
-                              size="sm"
-                              className="h-10 px-3 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                        <div className="space-y-1">
+                          <Label className="text-sm">Disc (%)</Label>
+                          <Input
+                            type="number"
+                            value={item.discount}
+                            onChange={(e) =>
+                              updateQuotationItemWithMerge(item.id, {
+                                discount: +e.target.value,
+                                discountType: 'percentage'
+                              })
+                            }
+                            className="h-8 text-sm"
+                          />
+                        </div>
+
+                        {/* Service Charges Field */}
+                        <div className="space-y-1">
+                          <Label className="text-sm">Services</Label>
+                          <div className="h-8 px-3 py-2 bg-blue-50 border rounded-md text-sm font-medium text-blue-700 flex items-center">
+                            {formatAmount(item.serviceCharges || 0)}
                           </div>
                         </div>
 
-                        {/* Amount Field (Now includes service charges) */}
-                        <div className="space-y-2">
-                          <Label>Total Amount</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              value={formatAmount(item.amount)}
-                              readOnly
-                              className="bg-gray-100 font-semibold"
-                              title={`Includes: Product + Service Charges (${formatAmount(item.serviceCharges || 0)})`}
-                            />
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-10 px-3 text-red-600 hover:text-red-700 hover:bg-red-50"
-                              disabled
-                              title="Amount is auto-calculated"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                        {/* Total Amount Field */}
+                        <div className="space-y-1">
+                          <Label className="text-sm font-semibold">Total</Label>
+                          <div className="h-8 px-3 py-2 bg-green-100 border-2 border-green-300 rounded-md text-sm font-bold text-green-800 flex items-center">
+                            {formatAmount(item.amount)}
                           </div>
-                          {item.serviceCharges > 0 && (
-                            <p className="text-xs text-blue-600">
-                              +{formatAmount(item.serviceCharges)} service charges
-                            </p>
-                          )}
                         </div>
                       </div>
+
+                      {/* Service Charges Breakdown */}
+                      {itemServiceDetails.length > 0 && (
+                        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <Label className="text-sm font-medium text-blue-800 mb-2 block">Service Charges Breakdown:</Label>
+                          <div className="space-y-1">
+                            {itemServiceDetails.map((service, index) => (
+                              <div key={index} className="flex justify-between text-sm">
+                                <span className="text-blue-700">{service.serviceName}</span>
+                                <span className="font-medium text-blue-800">{formatAmount(service.total || service.price || 0)}</span>
+                              </div>
+                            ))}
+                            <div className="border-t border-blue-300 pt-1 mt-2 flex justify-between font-semibold">
+                              <span className="text-blue-800">Total Services:</span>
+                              <span className="text-blue-900">{formatAmount(item.serviceCharges || 0)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="space-y-2">
                         <Label>Description</Label>
@@ -8770,7 +8565,8 @@ const addQuotationItem = (titleId: string) => {
                             onChange={(e) =>
                               updateQuotationItemWithMerge(item.id, { description: e.target.value })
                             }
-                            rows={2}
+                            rows={3}
+                            placeholder="Product description and service details will be auto-populated..."
                           />
                           <Button
                             onClick={() => deleteFieldValue(item.id, 'description', '')}

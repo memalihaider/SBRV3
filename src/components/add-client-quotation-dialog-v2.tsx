@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { Trash2 } from 'lucide-react';
 import mockData from '@/lib/mock-data';
 import { QuotationItemDialog } from './quotation-item-dialog';
+import { ProductSelectWithImages } from './product-select-with-images';
 import { Product, ProductService } from '@/types';
 
 interface QuotationItemWithServices {
@@ -248,18 +249,13 @@ export default function AddClientQuotationDialogV2({ children, onCreate }: Props
                 <div>
                   <Label htmlFor="productSelect">Select Product</Label>
                   <div className="flex gap-2 mt-1">
-                    <Select value={selectedProduct} onValueChange={handleProductSelect}>
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Choose a product..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableProducts.map((product) => (
-                          <SelectItem key={product.id} value={product.id}>
-                            {product.name} ({product.sku}) - ${product.sellingPrice}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <ProductSelectWithImages
+                      products={availableProducts}
+                      value={selectedProduct}
+                      onValueChange={handleProductSelect}
+                      placeholder="Choose a product..."
+                      className="flex-1"
+                    />
                   </div>
                   <p className="text-xs text-gray-500 mt-1">Select a product to add it with optional services</p>
                 </div>
