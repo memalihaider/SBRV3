@@ -8272,8 +8272,8 @@ const addQuotationItem = (titleId: string) => {
 
         return (
           <div key={title.id} className="border rounded-xl p-5 bg-gray-50 space-y-5">
-            {/* Title Header with Toggle Button */}
-            <div className="flex justify-between items-center">
+            {/* Title Header with Toggle Button and Add Item Button */}
+            <div className="flex justify-between items-center gap-3">
               <div className="flex items-center gap-3 flex-1">
                 <Button
                   variant="ghost"
@@ -8307,14 +8307,13 @@ const addQuotationItem = (titleId: string) => {
                   </Button>
                 </div>
               </div>
-            </div>
-
-            {/* Add Item Button */}
-            <div className="flex justify-end">
+              
+              {/* Add Item Button - Positioned in header */}
               <Button
                 size="sm"
                 onClick={() => addQuotationItemLocal(title.id, titleIndex)}
                 disabled={isCollapsed}
+                className="flex-shrink-0"
               >
                 <Plus className="h-4 w-4 mr-1" />
                 Add Item

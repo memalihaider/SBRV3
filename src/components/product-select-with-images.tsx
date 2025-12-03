@@ -41,8 +41,8 @@ export function ProductSelectWithImages({
       </SelectTrigger>
       <SelectContent className="max-w-2xl">
         {products.map((product) => {
-          const hasImage = product.images && product.images.length > 0;
-          const productImage = hasImage ? product.images[0] : null;
+          const hasImage = product.images && Array.isArray(product.images) && product.images.length > 0;
+          const productImage = hasImage ? product.images?.[0] : null;
           const modelNumber = product.modelNumber || 'N/A';
           
           return (
